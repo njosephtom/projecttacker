@@ -1,6 +1,5 @@
 import React from 'react';
 import StatusCell from './StatusCell';
-import NotesCell from './NotesCell';
 import '../styles/DataTable.css';
 
 function DataTable({ data, category, onDataChange, rowHeight = 40 }) {
