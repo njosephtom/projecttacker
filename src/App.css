@@ -31,10 +31,40 @@
   opacity: 0.9;
 }
 
+.tabs-wrapper {
+  display: flex;
+  gap: 0;
+  background: white;
+  border-bottom: 2px solid #e0e0e0;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.tabs-wrapper .tab-button {
+  border-bottom: none;
+  border-right: 1px solid #e0e0e0;
+  padding: 16px 24px;
+  margin: 0;
+}
+
+.tabs-wrapper .tab-button:last-child {
+  border-right: none;
+}
+
+.tabs-wrapper .tab-button.active {
+  border-bottom: 3px solid #667eea;
+  margin-bottom: -2px;
+}
+
 .content-wrapper {
   display: flex;
   flex-direction: column;
   gap: 0;
+  background: white;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 20px;
 }
 
 .tab-container {

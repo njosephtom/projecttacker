@@ -8,7 +8,7 @@ function RowHeightControl({ rowHeight, onRowHeightChange }) {
       <input
         id="row-height-slider"
         type="range"
-        min="30"
+        min="05"
         max="80"
         value={rowHeight}
         onChange={(e) => onRowHeightChange(parseInt(e.target.value, 10))}
