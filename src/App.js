@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import './App.css';
 import CollapsibleSection from './components/CollapsibleSection';
 import DataTable from './components/DataTable';
-import AssetPropsTable from './components/AssetPropsTable';
 import ShotsTable from './components/ShotsTable';
 import RowHeightControl from './components/RowHeightControl';
-import { charactersData, propsData, setsData, assetCharacterPropsData, shotsData } from './data';
+import { charactersData, propsData, setsData, shotsData } from './data';
 
 function App() {
   const [rowHeight, setRowHeight] = useState(40);
@@ -14,14 +13,11 @@ function App() {
     characters: true,
     props: true,
     sets: true,
-    assetProps: false,
-    shots: false,
   });
   const [data, setData] = useState({
     characters: charactersData,
     props: propsData,
     sets: setsData,
-    assetProps: assetCharacterPropsData,
     shots: shotsData,
   });
 
