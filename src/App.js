@@ -1,45 +1,75 @@
 import React, { useState } from 'react';
 import './App.css';
-import TabContainer from './components/TabContainer';
+import CollapsibleSection from './components/CollapsibleSection';
+import DataTable from './components/DataTable';
+import RowHeightControl from './components/RowHeightControl';
 import { charactersData, propsData, setsData } from './data';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('characters');
+  const [rowHeight, setRowHeight] = useState(40);
+  const [expandedSections, setExpandedSections] = useState({
+    characters: true,
+    props: true,
+    sets: true,
+  });
   const [data, setData] = useState({
     characters: charactersData,
     props: propsData,
     sets: setsData,
   });
 
-  const handleDataChange = (tab, itemIndex, field, value) => {
+  const handleDataChange = (category, itemIndex, field, value) => {
     setData(prevData => {
       const newData = { ...prevData };
-      newData[tab][itemIndex][field] = value;
+      newData[category][itemIndex][field] = value;
       return newData;
     });
   };
 
-  const tabs = [
-    { id: 'characters', label: 'Characters', icon: '👤' },
-    { id: 'props', label: 'Props', icon: '🎬' },
-    { id: 'sets', label: 'Sets', icon: '🏠' },
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
+  const sections = [
+    { id: 'characters', label: 'Characters', icon: '👤', count: data.characters.length },
+    { id: 'props', label: 'Props', icon: '🎬', count: data.props.length },
+    { id: 'sets', label: 'Sets', icon: '🏠', count: data.sets.length },
   ];
 
   return (
     <div className="App">
       <header className="app-header">
-        <h1>🎬 Project Tracker</h1>
-        <p>Production Pipeline Status</p>
+        <div className="header-content">
+          <div>
+            <h1>🎬 Project Tracker</h1>
+            <p>Production Pipeline Status</p>
+          </div>
+          <RowHeightControl rowHeight={rowHeight} onRowHeightChange={setRowHeight} />
+        </div>
       </header>
 
-      <TabContainer
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        data={data[activeTab]}
-        currentTab={activeTab}
-        onDataChange={handleDataChange}
-      />
+      <div className="content-wrapper">
+        {sections.map(section => (
+          <CollapsibleSection
+            key={section.id}
+            section={section}
+            isExpanded={expandedSections[section.id]}
+            onToggle={() => toggleSection(section.id)}
+          >
+            {expandedSections[section.id] && (
+              <DataTable
+                data={data[section.id]}
+                category={section.id}
+                onDataChange={handleDataChange}
+                rowHeight={rowHeight}
+              />
+            )}
+          </CollapsibleSection>
+        ))}
+      </div>
     </div>
   );
 }

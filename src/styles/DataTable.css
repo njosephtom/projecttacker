@@ -2,6 +2,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95rem;
+  --row-height: 40px;
 }
 
 .data-table thead {
