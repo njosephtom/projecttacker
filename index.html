@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HC Project Tracker</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        h1 { margin-bottom: 20px; font-size: 24px; }
+
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+        .tab-btn { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 14px; border-bottom: 3px solid transparent; }
+        .tab-btn.active { border-bottom-color: #007bff; color: #007bff; font-weight: bold; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .btn { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #0056b3; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; }
+
+        .add-section { margin-bottom: 20px; }
+        .form-group { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+        .form-group label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: bold; }
+        .form-group input { padding: 6px; border: 1px solid #ddd; border-radius: 4px; min-width: 200px; }
+
+        .table-wrapper { overflow-x: auto; background: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 12px; text-align: left; font-weight: bold; font-size: 13px; border-bottom: 2px solid #ddd; }
+        td { padding: 12px; border-bottom: 1px solid #ddd; }
+        tr:hover { background: #f9f9f9; }
+
+        .actions { display: flex; gap: 6px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 30px; border-radius: 8px; min-width: 400px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .modal-content h2 { margin-bottom: 15px; }
+        .modal-group { margin-bottom: 15px; }
+        .modal-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 13px; }
+        .modal-group input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+        .error { color: #dc3545; font-size: 12px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 HC Project Tracker</h1>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('assets')">📦 Assets</button>
+            <button class="tab-btn" onclick="switchTab('shots')">🎥 Shots</button>
+        </div>
+
+        <!-- Assets Tab -->
+        <div id="assets" class="tab-content active">
+            <div class="add-section">
+                <button class="btn" onclick="openAssetModal()">+ Add Asset</button>
+                <select id="assetSortBy" style="margin-left: 15px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="saveAssetSort(); loadAssets();">
+                    <option value="id">Sort by ID</option>
+                    <option value="category">Sort by Category</option>
+                    <option value="gdrivePath">Sort by GDrive Path</option>
+                    <option value="status">Sort by Status</option>
+                </select>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Category</th>
+                            <th>GDrive Path</th>
+                            <th>Status</th>
+                            <th>JSON Data</th>
+                            <th style="width: 120px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="assets-table">
+                        <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Shots Tab -->
+        <div id="shots" class="tab-content">
+            <div class="add-section">
+                <button class="btn" onclick="openShotModal()">+ Add Shot</button>
+                <select id="shotSortBy" style="margin-left: 15px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="saveShotSort(); loadShots();">
+                    <option value="id">Sort by ID</option>
+                    <option value="seq">Sort by Seq</option>
+                    <option value="shot">Sort by Shot</option>
+                    <option value="filename">Sort by Filename</option>
+                    <option value="status">Sort by Status</option>
+                </select>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Seq</th>
+                            <th>Shot</th>
+                            <th>Filename</th>
+                            <th>GDrive Path</th>
+                            <th>Status</th>
+                            <th>JSON Data</th>
+                            <th style="width: 120px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="shots-table">
+                        <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Asset Edit Modal -->
+    <div id="assetModal" class="modal">
+        <div class="modal-content">
+            <h2 id="assetModalTitle">Add Asset</h2>
+            <div class="modal-group">
+                <label>ID</label>
+                <input type="text" id="assetId" placeholder="e.g., asset_001">
+            </div>
+            <div class="modal-group">
+                <label>Category</label>
+                <select id="assetCategory" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="Camera">Camera</option>
+                    <option value="Characters">Characters</option>
+                    <option value="Environments">Environments</option>
+                    <option value="Props">Props</option>
+                </select>
+            </div>
+            <div class="modal-group">
+                <label>GDrive Path <span style="font-size: 11px; color: #999;">(auto-generated, editable)</span></label>
+                <input type="text" id="assetGdrive" placeholder="e.g., /Assets/..." style="border-color: #28a745;" onchange="markAssetGdriveAsManual()" oninput="markAssetGdriveAsManual()">
+                <div id="assetGdriveStatus" style="font-size: 11px; margin-top: 4px; color: #999;"></div>
+            </div>
+            <div class="modal-group">
+                <label>Status</label>
+                <select id="assetStatus" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="approved">Approved</option>
+                    <option value="wip">WIP</option>
+                    <option value="hold">Hold</option>
+                    <option value="omitted">Omitted</option>
+                </select>
+            </div>
+            <div class="modal-group">
+                <label>JSON Data (optional)</label>
+                <input type="text" id="assetJson" placeholder='e.g., {"key": "value"}'>
+                <div class="error" id="assetJsonError"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeAssetModal()">Cancel</button>
+                <button class="btn" onclick="saveAsset()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shot Edit Modal -->
+    <div id="shotModal" class="modal">
+        <div class="modal-content">
+            <h2 id="shotModalTitle">Add Shot</h2>
+            <div class="modal-group">
+                <label>ID</label>
+                <input type="text" id="shotId" placeholder="e.g., shot_001">
+            </div>
+            <div class="modal-group">
+                <label>Seq</label>
+                <input type="text" id="shotSeq" placeholder="e.g., 1">
+            </div>
+            <div class="modal-group">
+                <label>Shot</label>
+                <input type="text" id="shotShot" placeholder="e.g., Wide">
+            </div>
+            <div class="modal-group">
+                <label>Dept</label>
+                <input type="text" id="shotDept" placeholder="e.g., Anim, VFX, Lighting" onchange="updateShotFilename()" oninput="updateShotFilename()">
+            </div>
+            <div class="modal-group">
+                <label>Filename <span style="font-size: 11px; color: #999;">(auto-generated, editable)</span></label>
+                <input type="text" id="shotFilename" placeholder="e.g., SQ200_Sh001_Anim_v0000.ma" style="border-color: #28a745;" onchange="markShotFilenameAsManual()" oninput="markShotFilenameAsManual()">
+                <div id="shotFilenameStatus" style="font-size: 11px; margin-top: 4px; color: #999;"></div>
+            </div>
+            <div class="modal-group">
+                <label>GDrive Path <span style="font-size: 11px; color: #999;">(auto-generated, editable)</span></label>
+                <input type="text" id="shotGdrive" placeholder="e.g., /Shots/..." style="border-color: #28a745;" onchange="markShotGdriveAsManual()" oninput="markShotGdriveAsManual()">
+                <div id="shotGdriveStatus" style="font-size: 11px; margin-top: 4px; color: #999;"></div>
+            </div>
+            <div class="modal-group">
+                <label>Status</label>
+                <select id="shotStatus" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="approved">Approved</option>
+                    <option value="wip">WIP</option>
+                    <option value="hold">Hold</option>
+                    <option value="omitted">Omitted</option>
+                </select>
+            </div>
+            <div class="modal-group">
+                <label>JSON Data (optional)</label>
+                <input type="text" id="shotJson" placeholder='e.g., {"key": "value"}'>
+                <div class="error" id="shotJsonError"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeShotModal()">Cancel</button>
+                <button class="btn" onclick="saveShot()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase config
+        const firebaseConfig = {
+            apiKey: "AIzaSyBmrFwI72gn3WGcXPPbTRpKEewVUIK7XuI",
+            authDomain: "hcproject-9026a.firebaseapp.com",
+            projectId: "hcproject-9026a",
+            storageBucket: "hcproject-9026a.firebasestorage.app",
+            messagingSenderId: "359742933506",
+            appId: "1:359742933506:web:c8581701778656f7d4351b",
+            measurementId: "G-CJV02GMJHQ"
+        };
+
+        let db, editingAssetId = null, editingShotId = null;
+
+        // Sort functions
+        function saveAssetSort() {
+            const sortBy = document.getElementById('assetSortBy').value;
+            localStorage.setItem('assetSortBy', sortBy);
+        }
+        function saveShotSort() {
+            const sortBy = document.getElementById('shotSortBy').value;
+            localStorage.setItem('shotSortBy', sortBy);
+        }
+        function loadAssetSort() {
+            const sortBy = localStorage.getItem('assetSortBy') || 'id';
+            document.getElementById('assetSortBy').value = sortBy;
+            return sortBy;
+        }
+        function loadShotSort() {
+            const sortBy = localStorage.getItem('shotSortBy') || 'id';
+            document.getElementById('shotSortBy').value = sortBy;
+            return sortBy;
+        }
+        function sortData(data, sortBy) {
+            return data.sort((a, b) => {
+                const aVal = a[sortBy] || '';
+                const bVal = b[sortBy] || '';
+                return String(aVal).localeCompare(String(bVal));
+            });
+        }
+
+        // Initialize Firebase when ready
+        window.addEventListener('load', () => {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            loadAssetSort();
+            loadShotSort();
+            loadAssets();
+            loadShots();
+        });
+
+        // Tab switching
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Load assets
+        async function loadAssets() {
+            const tbody = document.getElementById('assets-table');
+            try {
+                const snap = await db.collection('assets').get();
+                if (snap.empty) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No assets yet</td></tr>';
+                    return;
+                }
+                const sortBy = loadAssetSort();
+                const docs = snap.docs.map(doc => ({ ...doc.data(), docId: doc.id }));
+                const sorted = sortData(docs, sortBy);
+                tbody.innerHTML = sorted.map(d => {
+                    const catColors = { 'Camera': '#cfe2ff', 'Characters': '#e7d4f5', 'Environments': '#d1e7dd', 'Props': '#fff3cd' };
+                    return `
+                        <tr>
+                            <td><strong>${d.id || d.docId}</strong></td>
+                            <td><span style="padding: 4px 8px; border-radius: 3px; font-size: 12px; background: ${catColors[d.category] || '#f0f0f0'};">${d.category || '—'}</span></td>
+                            <td style="color: ${d.gdriveManual ? '#ff9800' : '#666'}; font-weight: ${d.gdriveManual ? 'bold' : 'normal'};">${d.gdrivePath || '—'}${d.gdriveManual ? ' ✎' : ''}</td>
+                            <td><span style="padding: 4px 8px; border-radius: 3px; font-size: 12px; background: ${d.status === 'approved' ? '#d4edda' : d.status === 'wip' ? '#fff3cd' : d.status === 'hold' ? '#f8d7da' : '#e2e3e5'}; color: ${d.status === 'approved' ? '#155724' : d.status === 'wip' ? '#856404' : d.status === 'hold' ? '#721c24' : '#383d41'};">${d.status || 'approved'}</span></td>
+                            <td><code style="font-size:11px;">${JSON.stringify(d.json || {}).slice(0, 50)}...</code></td>
+                            <td class="actions">
+                                <button class="btn btn-warning btn-sm" onclick="editAsset('${d.docId}')">Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteAsset('${d.docId}')">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="6" class="error">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        // Load shots
+        async function loadShots() {
+            const tbody = document.getElementById('shots-table');
+            try {
+                const snap = await db.collection('shots').get();
+                if (snap.empty) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No shots yet</td></tr>';
+                    return;
+                }
+                const sortBy = loadShotSort();
+                const docs = snap.docs.map(doc => ({ ...doc.data(), docId: doc.id }));
+                const sorted = sortData(docs, sortBy);
+                tbody.innerHTML = sorted.map(d => {
+                    return `
+                        <tr>
+                            <td><strong>${d.id || d.docId}</strong></td>
+                            <td>${d.seq || '—'}</td>
+                            <td>${d.shot || '—'}</td>
+                            <td style="color: ${d.filenameManual ? '#ff9800' : '#666'}; font-weight: ${d.filenameManual ? 'bold' : 'normal'};"><code style="font-size: 11px;">${d.filename || '—'}${d.filenameManual ? ' ✎' : ''}</code></td>
+                            <td style="color: ${d.gdriveManual ? '#ff9800' : '#666'}; font-weight: ${d.gdriveManual ? 'bold' : 'normal'};">${d.gdrivePath || '—'}${d.gdriveManual ? ' ✎' : ''}</td>
+                            <td><span style="padding: 4px 8px; border-radius: 3px; font-size: 12px; background: ${d.status === 'approved' ? '#d4edda' : d.status === 'wip' ? '#fff3cd' : d.status === 'hold' ? '#f8d7da' : '#e2e3e5'}; color: ${d.status === 'approved' ? '#155724' : d.status === 'wip' ? '#856404' : d.status === 'hold' ? '#721c24' : '#383d41'};">${d.status || 'approved'}</span></td>
+                            <td><code style="font-size:11px;">${JSON.stringify(d.json || {}).slice(0, 50)}...</code></td>
+                            <td class="actions">
+                                <button class="btn btn-warning btn-sm" onclick="editShot('${d.docId}')">Edit</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteShot('${d.docId}')">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="8" class="error">Error: ${err.message}</td></tr>`;
+            }
+        }
+
+        // Asset GDrive helpers
+        let assetGdriveManualEdit = false;
+        function generateAssetGdrivePath() {
+            const id = document.getElementById('assetId').value.trim();
+            const category = document.getElementById('assetCategory').value;
+            if (id && category) {
+                if (category === 'Camera') {
+                    return `/Assets/${category}`;
+                } else {
+                    return `/Assets/${category}/${id}`;
+                }
+            }
+            return '';
+        }
+        function updateAssetGdrivePath() {
+            if (!assetGdriveManualEdit) {
+                const generated = generateAssetGdrivePath();
+                document.getElementById('assetGdrive').value = generated;
+                document.getElementById('assetGdrive').style.borderColor = '#28a745';
+                document.getElementById('assetGdriveStatus').textContent = '✓ Auto-generated';
+                document.getElementById('assetGdriveStatus').style.color = '#28a745';
+            }
+        }
+        function markAssetGdriveAsManual() {
+            const generated = generateAssetGdrivePath();
+            const current = document.getElementById('assetGdrive').value.trim();
+            if (current !== generated) {
+                assetGdriveManualEdit = true;
+                document.getElementById('assetGdrive').style.borderColor = '#ff9800';
+                document.getElementById('assetGdriveStatus').textContent = '✎ Manually edited';
+                document.getElementById('assetGdriveStatus').style.color = '#ff9800';
+            } else {
+                assetGdriveManualEdit = false;
+                document.getElementById('assetGdrive').style.borderColor = '#28a745';
+                document.getElementById('assetGdriveStatus').textContent = '✓ Auto-generated';
+                document.getElementById('assetGdriveStatus').style.color = '#28a745';
+            }
+        }
+
+        // Shot helpers
+        let shotGdriveManualEdit = false, shotFilenameManualEdit = false;
+        function generateShotId() {
+            const seq = document.getElementById('shotSeq').value.trim();
+            const shot = document.getElementById('shotShot').value.trim();
+            if (seq && shot) {
+                return `${seq}_${shot}`;
+            }
+            return '';
+        }
+        function generateShotFilename() {
+            const seq = document.getElementById('shotSeq').value.trim().replace(/\D/g, '');
+            const shot = document.getElementById('shotShot').value.trim().replace(/\D/g, '');
+            const dept = document.getElementById('shotDept').value.trim();
+            if (seq && shot && dept) {
+                return `SQ${seq}_Sh${shot}_${dept}_v0000.ma`;
+            }
+            return '';
+        }
+        function generateShotGdrivePath() {
+            const seq = document.getElementById('shotSeq').value.trim();
+            const shot = document.getElementById('shotShot').value.trim();
+            if (seq && shot) {
+                return `/Shots/${seq}/${seq}_${shot}`;
+            }
+            return '';
+        }
+        function updateShotFilename() {
+            const generatedId = generateShotId();
+            document.getElementById('shotId').value = generatedId;
+            if (!shotFilenameManualEdit) {
+                const generated = generateShotFilename();
+                if (generated) {
+                    document.getElementById('shotFilename').value = generated;
+                    document.getElementById('shotFilename').style.borderColor = '#28a745';
+                    document.getElementById('shotFilenameStatus').textContent = '✓ Auto-generated';
+                    document.getElementById('shotFilenameStatus').style.color = '#28a745';
+                }
+            }
+            updateShotGdrivePath();
+        }
+        function updateShotGdrivePath() {
+            if (!shotGdriveManualEdit) {
+                const generated = generateShotGdrivePath();
+                document.getElementById('shotGdrive').value = generated;
+                document.getElementById('shotGdrive').style.borderColor = '#28a745';
+                document.getElementById('shotGdriveStatus').textContent = '✓ Auto-generated';
+                document.getElementById('shotGdriveStatus').style.color = '#28a745';
+            }
+        }
+        function markShotFilenameAsManual() {
+            const generated = generateShotFilename();
+            const current = document.getElementById('shotFilename').value.trim();
+            if (current !== generated) {
+                shotFilenameManualEdit = true;
+                document.getElementById('shotFilename').style.borderColor = '#ff9800';
+                document.getElementById('shotFilenameStatus').textContent = '✎ Manually edited';
+                document.getElementById('shotFilenameStatus').style.color = '#ff9800';
+            } else {
+                shotFilenameManualEdit = false;
+                document.getElementById('shotFilename').style.borderColor = '#28a745';
+                document.getElementById('shotFilenameStatus').textContent = '✓ Auto-generated';
+                document.getElementById('shotFilenameStatus').style.color = '#28a745';
+            }
+        }
+        function markShotGdriveAsManual() {
+            const generated = generateShotGdrivePath();
+            const current = document.getElementById('shotGdrive').value.trim();
+            if (current !== generated) {
+                shotGdriveManualEdit = true;
+                document.getElementById('shotGdrive').style.borderColor = '#ff9800';
+                document.getElementById('shotGdriveStatus').textContent = '✎ Manually edited';
+                document.getElementById('shotGdriveStatus').style.color = '#ff9800';
+            } else {
+                shotGdriveManualEdit = false;
+                document.getElementById('shotGdrive').style.borderColor = '#28a745';
+                document.getElementById('shotGdriveStatus').textContent = '✓ Auto-generated';
+                document.getElementById('shotGdriveStatus').style.color = '#28a745';
+            }
+        }
+
+        // Asset modal
+        function openAssetModal() {
+            editingAssetId = null;
+            assetGdriveManualEdit = false;
+            document.getElementById('assetModalTitle').textContent = 'Add Asset';
+            document.getElementById('assetId').value = '';
+            document.getElementById('assetId').onchange = updateAssetGdrivePath;
+            document.getElementById('assetCategory').value = 'Camera';
+            document.getElementById('assetCategory').onchange = updateAssetGdrivePath;
+            document.getElementById('assetGdrive').value = '';
+            document.getElementById('assetStatus').value = 'approved';
+            document.getElementById('assetJson').value = '';
+            document.getElementById('assetJsonError').textContent = '';
+            document.getElementById('assetGdriveStatus').textContent = '';
+            document.getElementById('assetModal').classList.add('active');
+        }
+
+        async function editAsset(docId) {
+            const doc = await db.collection('assets').doc(docId).get();
+            if (!doc.exists) return;
+            const d = doc.data();
+            editingAssetId = docId;
+            document.getElementById('assetModalTitle').textContent = 'Edit Asset';
+            document.getElementById('assetId').value = d.id || '';
+            document.getElementById('assetId').onchange = updateAssetGdrivePath;
+            document.getElementById('assetCategory').value = d.category || 'Camera';
+            document.getElementById('assetCategory').onchange = updateAssetGdrivePath;
+            document.getElementById('assetGdrive').value = d.gdrivePath || '';
+            document.getElementById('assetStatus').value = d.status || 'approved';
+            document.getElementById('assetJson').value = JSON.stringify(d.json || {});
+            document.getElementById('assetJsonError').textContent = '';
+            assetGdriveManualEdit = d.gdriveManual || false;
+            markAssetGdriveAsManual();
+            document.getElementById('assetModal').classList.add('active');
+        }
+
+        function closeAssetModal() {
+            document.getElementById('assetModal').classList.remove('active');
+        }
+
+        async function saveAsset() {
+            const id = document.getElementById('assetId').value.trim();
+            const category = document.getElementById('assetCategory').value;
+            const gdrivePath = document.getElementById('assetGdrive').value.trim();
+            const status = document.getElementById('assetStatus').value;
+            const jsonStr = document.getElementById('assetJson').value.trim();
+            const gdriveManual = assetGdriveManualEdit;
+
+            if (!id || !gdrivePath) {
+                alert('ID and GDrive Path required');
+                return;
+            }
+
+            let json = {};
+            if (jsonStr) {
+                try {
+                    json = JSON.parse(jsonStr);
+                } catch {
+                    document.getElementById('assetJsonError').textContent = 'Invalid JSON';
+                    return;
+                }
+            }
+
+            try {
+                if (editingAssetId) {
+                    await db.collection('assets').doc(editingAssetId).update({ id, category, gdrivePath, status, json, gdriveManual });
+                } else {
+                    await db.collection('assets').add({ id, category, gdrivePath, status, json, gdriveManual });
+                }
+                closeAssetModal();
+                loadAssets();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function deleteAsset(docId) {
+            if (confirm('Delete this asset?')) {
+                try {
+                    await db.collection('assets').doc(docId).delete();
+                    loadAssets();
+                } catch (err) {
+                    alert(`Error: ${err.message}`);
+                }
+            }
+        }
+
+        // Shot modal
+        function openShotModal() {
+            editingShotId = null;
+            shotGdriveManualEdit = false;
+            shotFilenameManualEdit = false;
+            document.getElementById('shotModalTitle').textContent = 'Add Shot';
+            document.getElementById('shotSeq').value = '';
+            document.getElementById('shotSeq').onchange = updateShotFilename;
+            document.getElementById('shotShot').value = '';
+            document.getElementById('shotShot').onchange = updateShotFilename;
+            document.getElementById('shotDept').value = '';
+            document.getElementById('shotDept').onchange = updateShotFilename;
+            document.getElementById('shotId').value = '';
+            document.getElementById('shotFilename').value = '';
+            document.getElementById('shotGdrive').value = '';
+            document.getElementById('shotStatus').value = 'approved';
+            document.getElementById('shotJson').value = '';
+            document.getElementById('shotJsonError').textContent = '';
+            document.getElementById('shotFilenameStatus').textContent = '';
+            document.getElementById('shotGdriveStatus').textContent = '';
+            document.getElementById('shotModal').classList.add('active');
+        }
+
+        async function editShot(docId) {
+            const doc = await db.collection('shots').doc(docId).get();
+            if (!doc.exists) return;
+            const d = doc.data();
+            editingShotId = docId;
+            document.getElementById('shotModalTitle').textContent = 'Edit Shot';
+            document.getElementById('shotId').value = d.id || '';
+            document.getElementById('shotSeq').value = d.seq || '';
+            document.getElementById('shotSeq').onchange = updateShotFilename;
+            document.getElementById('shotShot').value = d.shot || '';
+            document.getElementById('shotShot').onchange = updateShotFilename;
+            document.getElementById('shotDept').value = d.dept || '';
+            document.getElementById('shotDept').onchange = updateShotFilename;
+            document.getElementById('shotFilename').value = d.filename || '';
+            document.getElementById('shotGdrive').value = d.gdrivePath || '';
+            document.getElementById('shotStatus').value = d.status || 'approved';
+            document.getElementById('shotJson').value = JSON.stringify(d.json || {});
+            document.getElementById('shotJsonError').textContent = '';
+            shotFilenameManualEdit = d.filenameManual || false;
+            shotGdriveManualEdit = d.gdriveManual || false;
+            markShotFilenameAsManual();
+            markShotGdriveAsManual();
+            document.getElementById('shotModal').classList.add('active');
+        }
+
+        function closeShotModal() {
+            document.getElementById('shotModal').classList.remove('active');
+        }
+
+        async function saveShot() {
+            const id = document.getElementById('shotId').value.trim();
+            const seq = document.getElementById('shotSeq').value.trim();
+            const shot = document.getElementById('shotShot').value.trim();
+            const dept = document.getElementById('shotDept').value.trim();
+            const filename = document.getElementById('shotFilename').value.trim();
+            const gdrivePath = document.getElementById('shotGdrive').value.trim();
+            const status = document.getElementById('shotStatus').value;
+            const jsonStr = document.getElementById('shotJson').value.trim();
+            const filenameManual = shotFilenameManualEdit;
+            const gdriveManual = shotGdriveManualEdit;
+
+            if (!id || !seq || !shot || !dept || !filename || !gdrivePath) {
+                alert('ID, Seq, Shot, Dept, Filename, and GDrive Path required');
+                return;
+            }
+
+            let json = {};
+            if (jsonStr) {
+                try {
+                    json = JSON.parse(jsonStr);
+                } catch {
+                    document.getElementById('shotJsonError').textContent = 'Invalid JSON';
+                    return;
+                }
+            }
+
+            try {
+                if (editingShotId) {
+                    await db.collection('shots').doc(editingShotId).update({ id, seq, shot, dept, filename, gdrivePath, status, json, filenameManual, gdriveManual });
+                } else {
+                    await db.collection('shots').add({ id, seq, shot, dept, filename, gdrivePath, status, json, filenameManual, gdriveManual });
+                }
+                closeShotModal();
+                loadShots();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        async function deleteShot(docId) {
+            if (confirm('Delete this shot?')) {
+                try {
+                    await db.collection('shots').doc(docId).delete();
+                    loadShots();
+                } catch (err) {
+                    alert(`Error: ${err.message}`);
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>
