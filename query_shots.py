@@ -2,14 +2,17 @@
 """
 Query Project Tracker shots via REST API.
 Usage: python query_shots.py <seq> <shot>
+Usage (local): API_BASE_URL=http://localhost:5000 python query_shots.py <seq> <shot>
 """
 
 import requests
 import json
 import sys
+import os
 from typing import Optional, Dict, Any
 
-API_BASE_URL = "http://localhost:3000"
+# Production URL (Vercel deployment)
+API_BASE_URL = os.getenv('API_BASE_URL', 'https://projecttacker.vercel.app')
 
 
 def get_shot(seq: str, shot: str) -> Optional[Dict[Any, Any]]:
