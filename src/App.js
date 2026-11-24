@@ -14,6 +14,7 @@ function App() {
   // Modal states
   const [assetModal, setAssetModal] = useState({ open: false, editing: null });
   const [shotModal, setShotModal] = useState({ open: false, editing: null });
+  const [batchModal, setBatchModal] = useState({ open: false, rows: [] });
 
   // Form states
   const [assetForm, setAssetForm] = useState({
@@ -132,7 +133,7 @@ function App() {
     if (!seq || !shot || !dept) return '';
     const seqNum = seq.replace(/\D/g, '');
     const shotNum = shot.replace(/\D/g, '');
-    return `SQ${seqNum}_Sh${shotNum}_${dept}_v0000.ma`;
+    return `SQ${seqNum}_Sh${shotNum}_${dept}_v000.ma`;
   };
 
   const generateShotGdrivePath = (seq, shot) => {
@@ -264,6 +265,142 @@ function App() {
         await db.collection('shots').add(shotForm);
       }
       setShotModal({ open: false, editing: null });
+      loadShots();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  // Batch add (Excel-style grid). Columns mirror the Add Shot form.
+  const BATCH_COLS = ['seq', 'shot', 'dept', 'filename', 'gdrivePath', 'status', 'jsonText'];
+  const BATCH_STATUSES = ['approved', 'wip', 'hold', 'omitted'];
+
+  const newBatchRow = (seq = '', dept = '') => ({
+    id: '',
+    seq,
+    shot: '',
+    dept,
+    filename: '',
+    gdrivePath: '',
+    status: 'approved',
+    jsonText: '',
+    filenameManual: false,
+    gdriveManual: false
+  });
+
+  // Same auto-generation rules as handleShotFormChange, applied to one row
+  const applyBatchChange = (row, field, value) => {
+    const updated = { ...row, [field]: value };
+    if (field === 'filename') updated.filenameManual = true;
+    if (field === 'gdrivePath') updated.gdriveManual = true;
+    if (field === 'seq' || field === 'shot' || field === 'dept') {
+      updated.id = generateShotId(updated.seq.trim(), updated.shot.trim());
+      if (!updated.filenameManual) updated.filename = generateShotFilename(updated.seq.trim(), updated.shot.trim(), updated.dept.trim());
+      if (!updated.gdriveManual) updated.gdrivePath = generateShotGdrivePath(updated.seq.trim(), updated.shot.trim());
+    }
+    return updated;
+  };
+
+  const openBatchModal = () => setBatchModal({ open: true, rows: Array.from({ length: 5 }, () => newBatchRow()) });
+
+  const closeBatchModal = () => setBatchModal({ open: false, rows: [] });
+
+  const updateBatchCell = (index, field, value) => {
+    setBatchModal(m => ({ ...m, rows: m.rows.map((r, i) => (i === index ? applyBatchChange(r, field, value) : r)) }));
+  };
+
+  const addBatchRow = () => {
+    setBatchModal(m => {
+      // carry Seq/Dept from the last row that has them, not just the last row
+      const filled = [...m.rows].reverse().find(r => r.seq || r.dept) || {};
+      return { ...m, rows: [...m.rows, newBatchRow(filled.seq || '', filled.dept || '')] };
+    });
+  };
+
+  const removeBatchRow = (index) => {
+    setBatchModal(m => ({ ...m, rows: m.rows.filter((_, i) => i !== index) }));
+  };
+
+  // Excel paste: tab = next column, newline = next row, starting at the focused cell
+  const handleBatchPaste = (e) => {
+    const text = e.clipboardData.getData('text');
+    if (!text.includes('\t') && !text.includes('\n')) return;
+    e.preventDefault();
+    const startRow = Number(e.target.dataset.row ?? 0);
+    const startCol = Number(e.target.dataset.col ?? 0);
+    const lines = text.replace(/\r/g, '').split('\n');
+    if (lines[lines.length - 1] === '') lines.pop();
+
+    setBatchModal(m => {
+      const rows = [...m.rows];
+      lines.forEach((line, i) => {
+        const idx = startRow + i;
+        while (rows.length <= idx) rows.push(newBatchRow());
+        line.split('\t').forEach((cell, j) => {
+          const field = BATCH_COLS[startCol + j];
+          if (!field) return;
+          let value = cell.trim();
+          if (field === 'status' && !BATCH_STATUSES.includes(value.toLowerCase())) value = 'approved';
+          if (field === 'status') value = value.toLowerCase();
+          rows[idx] = applyBatchChange(rows[idx], field, value);
+        });
+      });
+      return { ...m, rows };
+    });
+  };
+
+  // Enter moves down one cell, like Excel
+  const handleBatchKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const row = Number(e.target.dataset.row);
+    const col = Number(e.target.dataset.col);
+    const next = document.querySelector(`[data-cell="${row + 1}-${col}"]`);
+    if (next) next.focus();
+  };
+
+  const saveBatchShots = async () => {
+    const rows = batchModal.rows
+      .map((r, i) => ({ ...r, rowNo: i + 1 }))
+      .filter(r => [r.seq, r.shot, r.dept, r.filename, r.gdrivePath, r.jsonText].some(v => v && v.trim()));
+    if (rows.length === 0) {
+      alert('Nothing to save: fill in at least one row');
+      return;
+    }
+
+    const seen = new Set(shots.map(s => s.id));
+    const docs = [];
+    for (const r of rows) {
+      const seq = r.seq.trim(), shot = r.shot.trim(), dept = r.dept.trim();
+      const filename = r.filename.trim(), gdrivePath = r.gdrivePath.trim();
+      if (!seq || !shot || !dept || !filename || !gdrivePath) {
+        alert(`Row ${r.rowNo}: Seq, Shot, Dept, Filename, and GDrive Path required`);
+        return;
+      }
+      if (seen.has(r.id)) {
+        alert(`Row ${r.rowNo}: ID "${r.id}" already exists or is duplicated`);
+        return;
+      }
+      let json;
+      try {
+        json = r.jsonText.trim() ? JSON.parse(r.jsonText) : {};
+      } catch (err) {
+        alert(`Row ${r.rowNo}: JSON is invalid`);
+        return;
+      }
+      seen.add(r.id);
+      docs.push({
+        id: r.id, seq, shot, dept, filename, gdrivePath,
+        status: r.status, json,
+        filenameManual: r.filenameManual, gdriveManual: r.gdriveManual
+      });
+    }
+
+    try {
+      const batch = db.batch();
+      docs.forEach(doc => batch.set(db.collection('shots').doc(), doc));
+      await batch.commit();
+      closeBatchModal();
       loadShots();
     } catch (err) {
       alert(`Error: ${err.message}`);
@@ -443,6 +580,9 @@ function App() {
             <div style={{ marginBottom: '20px' }}>
               <button onClick={openShotModal} style={{ ...S.BUTTON_PRIMARY, marginRight: '15px' }}>
                 + Add Shot
+              </button>
+              <button onClick={openBatchModal} style={{ ...S.BUTTON_SECONDARY, marginRight: '15px' }}>
+                + Batch Add
               </button>
               <select
                 value={shotSort}
@@ -797,7 +937,7 @@ function App() {
                       filenameManual: val !== generated
                     });
                   }}
-                  placeholder="e.g., SQ200_Sh001_Anim_v0000.ma"
+                  placeholder="e.g., SQ200_Sh001_Anim_v000.ma"
                   style={{
                     width: '100%',
                     padding: '8px',
@@ -931,6 +1071,91 @@ function App() {
                 >
                   Save
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Batch Add Shots Modal (Excel-style grid) */}
+        {batchModal.open && (
+          <div style={S.MODAL_OVERLAY}>
+            <div style={{ ...S.MODAL_CONTENT, width: '95vw', maxWidth: '1400px' }}>
+              <h2 style={{ marginBottom: '6px' }}>Batch Add Shots</h2>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+                Type like Excel: Tab/Arrows move between cells, Enter moves down. You can paste rows copied from Excel (Ctrl+V) into any cell.
+              </div>
+
+              <div style={{ overflow: 'auto', maxHeight: '60vh', border: '1px solid #ccc' }}>
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#f0f0f0', position: 'sticky', top: 0 }}>
+                      {['#', 'Seq', 'Shot', 'Dept', 'ID', 'Filename', 'GDrive Path', 'Status', 'JSON', ''].map((h, i) => (
+                        <th key={i} style={{ border: '1px solid #ccc', padding: '6px', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody onPaste={handleBatchPaste}>
+                    {batchModal.rows.map((row, r) => {
+                      const cellStyle = { width: '100%', minWidth: '80px', padding: '4px 6px', border: 'none', background: 'transparent', fontSize: '13px', boxSizing: 'border-box', outline: 'none' };
+                      const tdStyle = { border: '1px solid #ddd', padding: 0 };
+                      const input = (field, extra = {}) => (
+                        <td style={tdStyle}>
+                          <input
+                            type="text"
+                            data-row={r}
+                            data-col={BATCH_COLS.indexOf(field)}
+                            data-cell={`${r}-${BATCH_COLS.indexOf(field)}`}
+                            value={row[field]}
+                            onChange={(e) => updateBatchCell(r, field, e.target.value)}
+                            onKeyDown={handleBatchKeyDown}
+                            style={{ ...cellStyle, ...extra }}
+                          />
+                        </td>
+                      );
+                      return (
+                        <tr key={r}>
+                          <td style={{ ...tdStyle, textAlign: 'center', color: '#888', background: '#fafafa', padding: '0 6px' }}>{r + 1}</td>
+                          {input('seq')}
+                          {input('shot')}
+                          {input('dept')}
+                          <td style={{ ...tdStyle, background: '#f5f5f5', padding: '4px 6px', color: '#555' }}>{row.id || '—'}</td>
+                          {input('filename', { color: row.filenameManual ? '#ff9800' : '#333' })}
+                          {input('gdrivePath', { color: row.gdriveManual ? '#ff9800' : '#333' })}
+                          <td style={tdStyle}>
+                            <select
+                              data-row={r}
+                              data-col={BATCH_COLS.indexOf('status')}
+                              data-cell={`${r}-${BATCH_COLS.indexOf('status')}`}
+                              value={row.status}
+                              onChange={(e) => updateBatchCell(r, 'status', e.target.value)}
+                              style={{ ...cellStyle, minWidth: '100px' }}
+                            >
+                              {BATCH_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </td>
+                          {input('jsonText', { minWidth: '120px' })}
+                          <td style={{ ...tdStyle, textAlign: 'center' }}>
+                            <button
+                              onClick={() => removeBatchRow(r)}
+                              title="Remove row"
+                              style={{ border: 'none', background: 'transparent', color: '#dc3545', cursor: 'pointer', fontSize: '16px', padding: '0 6px' }}
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', flexWrap: 'wrap' }}>
+                <button onClick={addBatchRow} style={S.BUTTON_SECONDARY}>+ Add Row</button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={closeBatchModal} style={S.BUTTON_SECONDARY}>Cancel</button>
+                  <button onClick={saveBatchShots} style={S.BUTTON_PRIMARY}>Save All ({batchModal.rows.filter(r => r.seq || r.shot || r.dept || r.filename || r.gdrivePath).length})</button>
+                </div>
               </div>
             </div>
           </div>

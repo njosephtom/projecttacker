@@ -4,12 +4,12 @@ Test query_shots API using Playwright.
 """
 
 import asyncio
-import subprocess
+import subprocesss
 import time
 import sys
 from playwright.async_api import async_playwright
 
-API_BASE_URL = "http://localhost:3000"
+API_BASE_URL = "https://projecttacker.vercel.app"
 
 
 async def test_shots_api():
